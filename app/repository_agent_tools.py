@@ -1,12 +1,9 @@
 from app.repository_tools import (
     get_repository_structure,
-    get_file,
+    get_file
 )
-
 from app.code_search import search_code
-
 from app.definition_lookup import find_definitions
-
 from app.reference_lookup import find_references
 
 
@@ -25,11 +22,15 @@ class RepositoryTools:
 
     def file_lookup(
         self,
-        file_path: str
+        file_path: str,
+        line_start: int | None = None,
+        line_end: int | None = None
     ) -> dict:
         return get_file(
             self.repository_path,
-            file_path
+            file_path,
+            line_start,
+            line_end
         )
 
     def code_search(

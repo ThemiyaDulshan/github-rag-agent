@@ -52,6 +52,7 @@ def get_repository_structure(
             is_last = index == len(entries) - 1
 
             connector = "└── " if is_last else "├── "
+
             lines.append(
                 f"{prefix}{connector}{entry.name}"
             )
@@ -72,7 +73,9 @@ def get_repository_structure(
 
 def get_file(
     repository_path: str,
-    file_path: str
+    file_path: str,
+    line_start: int | None = None,
+    line_end: int | None = None
 ) -> dict:
     root = Path(repository_path).resolve()
     target = (root / file_path).resolve()
@@ -103,8 +106,45 @@ def get_file(
             encoding="latin-1"
         )
 
+    lines = content.splitlines()
+
+    total_lines = len(lines)
+
+    if line_start is None:
+        line_start = 1
+
+    line_start = max(
+        1,
+        line_start
+    )
+
+    if line_end is None:
+        line_end = min(
+            line_start + 199,
+            total_lines
+        )
+
+    line_end = min(
+        line_end,
+        total_lines
+    )
+
+    selected_lines = lines[
+        line_start - 1:line_end
+    ]
+
+    numbered_content = "\n".join(
+        f"{number}: {line}"
+        for number, line in enumerate(
+            selected_lines,
+            start=line_start
+        )
+    )
+
     return {
         "path": file_path,
-        "content": content,
-        "line_count": len(content.splitlines()),
+        "content": numbered_content,
+        "line_start": line_start,
+        "line_end": line_end,
+        "line_count": total_lines,
     }
