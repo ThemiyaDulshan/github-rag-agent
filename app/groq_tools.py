@@ -46,6 +46,31 @@ def build_tool_definitions():
         {
             "type": "function",
             "function": {
+                "name": "repo_browser.search",
+                "description": "Search repository files for a text or code pattern. Use this for finding where a symbol or code pattern appears.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional repository-relative directory or file path to narrow the search."
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Text or code pattern to search for."
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum number of results."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "repo_browser.open_file",
                 "description": "Read a specific section of a repository file. Use path and optionally line_start and line_end.",
                 "parameters": {
@@ -134,7 +159,8 @@ def execute_tool(
 
     if normalized_name in {
         "code_search",
-        "search_code"
+        "search_code",
+        "search"
     }:
         return tools.code_search(
             query=arguments["query"],
