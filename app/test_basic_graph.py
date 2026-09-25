@@ -3,35 +3,45 @@ from app.github_loader import load_repository
 
 
 def main():
-    url = input(
-        "Enter GitHub repository URL: "
-    ).strip()
+    url = input("Enter GitHub repository URL: ").strip()
+    destination = "data/repositories/current"
 
-    destination = "data/repositories/langgraph-agent-test"
+    print("\nLoading and indexing repository...")
 
-    load_repository(
+    repository = load_repository(
         url,
         destination
     )
 
-    question = input(
-        "\nEnter your question: "
-    ).strip()
-
-    graph = build_graph(
-        destination
+    print("\nRepository ready.")
+    print(
+        f"Indexed {repository['index']['chunks']} chunks."
     )
 
-    result = graph.invoke({
-        "question": question,
-        "repository_path": destination,
-        "messages": [],
-        "answer": ""
-    })
+    graph = build_graph(destination)
 
-    print("\nLangGraph Agent Test")
-    print("=" * 60)
-    print(result["answer"])
+    while True:
+        question = input(
+            "\nEnter your question (or type 'exit'): "
+        ).strip()
+
+        if question.lower() == "exit":
+            break
+
+        if not question:
+            continue
+
+        result = graph.invoke({
+            "question": question,
+            "repository_path": destination,
+            "messages": [],
+            "answer": "",
+            "tool_calls": []
+        })
+
+        print("\nLangGraph Agent")
+        print("=" * 60)
+        print(result["answer"])
 
 
 if __name__ == "__main__":

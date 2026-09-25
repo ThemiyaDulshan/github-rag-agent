@@ -5,6 +5,7 @@ from app.repository_tools import (
 from app.code_search import search_code
 from app.definition_lookup import find_definitions
 from app.reference_lookup import find_references
+from app.vector_store import search
 
 
 class RepositoryTools:
@@ -63,5 +64,15 @@ class RepositoryTools:
         return find_references(
             self.repository_path,
             name,
+            max_results
+        )
+
+    def semantic_search(
+        self,
+        query: str,
+        max_results: int = 5
+    ) -> list[dict]:
+        return search(
+            query,
             max_results
         )

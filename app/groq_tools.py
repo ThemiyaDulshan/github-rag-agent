@@ -25,14 +25,39 @@ def build_tool_definitions():
         {
             "type": "function",
             "function": {
+                "name": "repo_browser.semantic_search",
+                "description": "Search the repository using semantic similarity to find code and documentation relevant to a question.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Question or concept to search for."
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum number of relevant chunks."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "repo_browser.code_search",
-                "description": "Search repository files for a text or code pattern.",
+                "description": "Search repository files for an exact text or code pattern.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
                             "description": "Text or code pattern to search for."
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional repository path to search within."
                         },
                         "max_results": {
                             "type": "integer",
@@ -47,17 +72,17 @@ def build_tool_definitions():
             "type": "function",
             "function": {
                 "name": "repo_browser.search",
-                "description": "Search repository files for a text or code pattern. Use this for finding where a symbol or code pattern appears.",
+                "description": "Search repository files for an exact text or code pattern.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional repository-relative directory or file path to narrow the search."
-                        },
                         "query": {
                             "type": "string",
                             "description": "Text or code pattern to search for."
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional repository path to search within."
                         },
                         "max_results": {
                             "type": "integer",
@@ -72,7 +97,7 @@ def build_tool_definitions():
             "type": "function",
             "function": {
                 "name": "repo_browser.open_file",
-                "description": "Read a specific section of a repository file. Use path and optionally line_start and line_end.",
+                "description": "Read a specific section of a repository file.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -138,66 +163,44 @@ def build_tool_definitions():
     ]
 
 
-def execute_tool(
-    repository_path: str,
-    tool_name: str,
-    arguments: dict
-):
-    tools = RepositoryTools(
-        repository_path
-    )
-
+def execute_tool(repository_path: str, tool_name: str, arguments: dict):
+    tools = RepositoryTools(repository_path)
     normalized_name = tool_name.split(".")[-1]
 
     if normalized_name == "repository_structure":
         return tools.repository_structure(
-            max_depth=arguments.get(
-                "max_depth",
-                4
-            )
+            max_depth=arguments.get("max_depth", 4)
         )
 
-    if normalized_name in {
-        "code_search",
-        "search_code",
-        "search"
-    }:
+    if normalized_name == "semantic_search":
+        return tools.semantic_search(
+            query=arguments["query"],
+            max_results=arguments.get("max_results", 5)
+        )
+
+    if normalized_name in {"code_search", "search_code", "search"}:
         return tools.code_search(
             query=arguments["query"],
-            max_results=arguments.get(
-                "max_results",
-                50
-            )
+            max_results=arguments.get("max_results", 50)
         )
 
-    if normalized_name in {
-        "open_file",
-        "file_lookup"
-    }:
+    if normalized_name in {"open_file", "file_lookup"}:
         file_path = arguments.get(
             "path",
             arguments.get("file_path")
         )
 
         if not file_path:
-            raise ValueError(
-                "File path was not provided"
-            )
+            raise ValueError("File path was not provided")
 
         return tools.file_lookup(
             file_path=file_path,
-            line_start=arguments.get(
-                "line_start"
-            ),
-            line_end=arguments.get(
-                "line_end"
-            )
+            line_start=arguments.get("line_start"),
+            line_end=arguments.get("line_end")
         )
 
     if normalized_name == "definition_lookup":
-        definition_type = arguments.get(
-            "definition_type"
-        )
+        definition_type = arguments.get("definition_type")
 
         if definition_type == "":
             definition_type = None
@@ -210,21 +213,13 @@ def execute_tool(
     if normalized_name == "reference_lookup":
         return tools.reference_lookup(
             name=arguments["name"],
-            max_results=arguments.get(
-                "max_results",
-                50
-            )
+            max_results=arguments.get("max_results", 50)
         )
 
-    raise ValueError(
-        f"Unknown tool: {tool_name}"
-    )
+    raise ValueError(f"Unknown tool: {tool_name}")
 
 
-def execute_tool_call(
-    repository_path: str,
-    tool_call
-):
+def execute_tool_call(repository_path: str, tool_call):
     arguments = json.loads(
         tool_call.function.arguments
     )

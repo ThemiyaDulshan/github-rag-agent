@@ -4,6 +4,8 @@ from collections import Counter
 
 from git import Repo
 
+from app.vector_store import build_index
+
 
 IGNORED_DIRECTORIES = {
     ".git",
@@ -112,7 +114,10 @@ def clone_repository(url: str, destination: str) -> Path:
             f"Destination already exists and is not empty: {destination}"
         )
 
-    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    destination_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     Repo.clone_from(
         url,
@@ -164,7 +169,10 @@ def scan_repository(repository_path: str) -> dict:
     directories = set()
 
     for path in root.rglob("*"):
-        if any(part in IGNORED_DIRECTORIES for part in path.parts):
+        if any(
+            part in IGNORED_DIRECTORIES
+            for part in path.parts
+        ):
             continue
 
         if not path.is_file():
@@ -188,7 +196,11 @@ def scan_repository(repository_path: str) -> dict:
         if file_size > MAX_FILE_SIZE:
             skipped_large_files += 1
 
-        if category and not binary and file_size <= MAX_FILE_SIZE:
+        if (
+            category
+            and not binary
+            and file_size <= MAX_FILE_SIZE
+        ):
             relevant_files += 1
 
         files.append({
@@ -208,7 +220,9 @@ def scan_repository(repository_path: str) -> dict:
             categories[category] += 1
 
         if len(relative_path.parts) > 1:
-            directories.add(str(relative_path.parent))
+            directories.add(
+                str(relative_path.parent)
+            )
 
     return {
         "repository_name": root.name,
@@ -218,19 +232,38 @@ def scan_repository(repository_path: str) -> dict:
         "binary_files": binary_files,
         "skipped_large_files": skipped_large_files,
         "files": files,
-        "extensions": dict(extensions.most_common()),
-        "categories": dict(categories.most_common()),
+        "extensions": dict(
+            extensions.most_common()
+        ),
+        "categories": dict(
+            categories.most_common()
+        ),
         "directories": sorted(directories),
     }
 
 
-def load_repository(url: str, destination: str) -> dict:
+def load_repository(
+    url: str,
+    destination: str
+) -> dict:
     metadata = parse_github_url(url)
 
-    repository_path = clone_repository(url, destination)
-    scan_result = scan_repository(repository_path)
+    repository_path = clone_repository(
+        url,
+        destination
+    )
+
+    scan_result = scan_repository(
+        repository_path
+    )
+
+    index_result = build_index(
+        str(repository_path),
+        scan_result["files"]
+    )
 
     return {
         **metadata,
         **scan_result,
+        "index": index_result,
     }
