@@ -8,16 +8,17 @@ from app.groq_tools import build_tool_definitions, execute_tool_call
 
 SYSTEM_PROMPT = """You are a read-only GitHub repository code analysis agent.
 
-You can inspect the repository using the available tools.
+Use repository tools when needed to answer questions about the codebase.
 
-Never modify files, create files, delete files, commit changes, or perform any write operation.
+Never modify files or perform write operations.
 
-Use repository tools when the question requires information about the codebase.
+Give concise answers grounded in repository evidence.
 
-When answering, provide specific file paths and line numbers when available.
-
-Keep answers concise and grounded in repository evidence.
+Include specific file paths and line numbers when available.
 """
+
+
+MAX_TOOL_OUTPUT = 1800
 
 
 def call_model(state: AgentState) -> AgentState:
@@ -44,7 +45,8 @@ def call_model(state: AgentState) -> AgentState:
         messages=messages,
         tools=build_tool_definitions(),
         tool_choice="auto",
-        max_tokens=1000
+        max_tokens=500,
+        reasoning_effort="low"
     )
 
     message = response.choices[0].message
@@ -67,16 +69,17 @@ def call_model(state: AgentState) -> AgentState:
             for tool_call in message.tool_calls
         ]
 
-    updated_messages = messages + [
-        assistant_message
-    ]
+    updated_messages = messages + [assistant_message]
 
     return {
         "question": state["question"],
         "repository_path": state["repository_path"],
         "messages": updated_messages,
         "answer": message.content or "",
-        "tool_calls": assistant_message.get("tool_calls", [])
+        "tool_calls": assistant_message.get(
+            "tool_calls",
+            []
+        )
     }
 
 
@@ -110,8 +113,11 @@ def execute_tools(state: AgentState) -> AgentState:
 
         content = tool_message["content"]
 
-        if len(content) > 12000:
-            content = content[:12000]
+        if len(content) > MAX_TOOL_OUTPUT:
+            content = (
+                content[:MAX_TOOL_OUTPUT]
+                + "\n[Tool output truncated]"
+            )
 
         tool_message["content"] = content
 
@@ -136,9 +142,7 @@ def route_after_model(state: AgentState):
 
 
 def build_graph(repository_path: str):
-    graph = StateGraph(
-        AgentState
-    )
+    graph = StateGraph(AgentState)
 
     graph.add_node(
         "model",
