@@ -4,7 +4,11 @@ from collections import Counter
 
 from git import Repo
 
-from app.vector_store import build_index
+from app.vector_store import (
+    build_index,
+    get_indexed_repository,
+    is_indexed_repository
+)
 
 
 IGNORED_DIRECTORIES = {
@@ -89,7 +93,9 @@ def parse_github_url(url: str) -> dict:
     parts = parsed.path.strip("/").split("/")
 
     if len(parts) < 2:
-        raise ValueError("URL must contain an owner and repository name")
+        raise ValueError(
+            "URL must contain an owner and repository name"
+        )
 
     owner = parts[0]
     repository = parts[1]
@@ -104,14 +110,21 @@ def parse_github_url(url: str) -> dict:
     }
 
 
-def clone_repository(url: str, destination: str) -> Path:
+def clone_repository(
+    url: str,
+    destination: str
+) -> Path:
     parse_github_url(url)
 
     destination_path = Path(destination)
 
-    if destination_path.exists() and any(destination_path.iterdir()):
+    if (
+        destination_path.exists()
+        and any(destination_path.iterdir())
+    ):
         raise FileExistsError(
-            f"Destination already exists and is not empty: {destination}"
+            "Destination already exists and is not empty: "
+            f"{destination}"
         )
 
     destination_path.parent.mkdir(
@@ -128,7 +141,9 @@ def clone_repository(url: str, destination: str) -> Path:
     return destination_path
 
 
-def get_file_category(path: Path) -> str | None:
+def get_file_category(
+    path: Path
+) -> str | None:
     extension = path.suffix.lower()
 
     for category, extensions in FILE_CATEGORIES.items():
@@ -149,7 +164,9 @@ def is_binary_file(path: Path) -> bool:
         return True
 
 
-def scan_repository(repository_path: str) -> dict:
+def scan_repository(
+    repository_path: str
+) -> dict:
     root = Path(repository_path)
 
     if not root.exists():
@@ -248,6 +265,30 @@ def load_repository(
 ) -> dict:
     metadata = parse_github_url(url)
 
+    existing_index = get_indexed_repository()
+
+    if is_indexed_repository(
+        metadata["owner"],
+        metadata["repository"]
+    ):
+        index_result = existing_index["index"]
+
+        return {
+            **metadata,
+            "repository_name": metadata["repository"],
+            "total_files": 0,
+            "relevant_files": 0,
+            "total_size_bytes": 0,
+            "binary_files": 0,
+            "skipped_large_files": 0,
+            "files": [],
+            "extensions": {},
+            "categories": {},
+            "directories": [],
+            "index": index_result,
+            "cached": True,
+        }
+
     repository_path = clone_repository(
         url,
         destination
@@ -259,11 +300,14 @@ def load_repository(
 
     index_result = build_index(
         str(repository_path),
-        scan_result["files"]
+        scan_result["files"],
+        owner=metadata["owner"],
+        repository=metadata["repository"]
     )
 
     return {
         **metadata,
         **scan_result,
         "index": index_result,
+        "cached": False,
     }

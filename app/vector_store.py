@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import chromadb
 
 from app.chunker import create_chunks
@@ -7,6 +10,7 @@ from app.embeddings import EmbeddingModel
 
 CHROMA_PATH = "chroma_db"
 COLLECTION_NAME = "github_code"
+METADATA_FILE = Path(CHROMA_PATH) / "repository.json"
 
 
 class VectorStore:
@@ -129,9 +133,57 @@ class VectorStore:
         return self.collection.count()
 
 
+def get_indexed_repository() -> dict | None:
+    if not METADATA_FILE.exists():
+        return None
+
+    try:
+        with METADATA_FILE.open(
+            "r",
+            encoding="utf-8"
+        ) as file:
+            return json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_indexed_repository(metadata: dict):
+    Path(CHROMA_PATH).mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    with METADATA_FILE.open(
+        "w",
+        encoding="utf-8"
+    ) as file:
+        json.dump(
+            metadata,
+            file,
+            indent=2
+        )
+
+
+def is_indexed_repository(
+    owner: str,
+    repository: str
+) -> bool:
+    metadata = get_indexed_repository()
+
+    if not metadata:
+        return False
+
+    return (
+        metadata.get("owner") == owner
+        and metadata.get("repository") == repository
+    )
+
+
 def build_index(
     repository_path: str,
-    files: list[dict]
+    files: list[dict],
+    owner: str | None = None,
+    repository: str | None = None
 ) -> dict:
     documents = load_documents(
         repository_path,
@@ -167,12 +219,21 @@ def build_index(
         embeddings
     )
 
-    return {
+    index_result = {
         "documents": len(documents),
         "chunks": len(chunks),
         "embeddings": len(embeddings),
         "dimensions": len(embeddings[0]),
     }
+
+    if owner and repository:
+        save_indexed_repository({
+            "owner": owner,
+            "repository": repository,
+            "index": index_result
+        })
+
+    return index_result
 
 
 def search(

@@ -25,6 +25,27 @@ def build_tool_definitions():
         {
             "type": "function",
             "function": {
+                "name": "repo_browser.print_tree",
+                "description": "Print the directory and file tree of the repository. Use this when asked about the repository structure or architecture.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional repository path to start from."
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Maximum directory depth to display."
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "repo_browser.semantic_search",
                 "description": "Search the repository using semantic similarity to find code and documentation relevant to a question.",
                 "parameters": {
@@ -165,42 +186,72 @@ def build_tool_definitions():
 
 def execute_tool(repository_path: str, tool_name: str, arguments: dict):
     tools = RepositoryTools(repository_path)
+
     normalized_name = tool_name.split(".")[-1]
 
-    if normalized_name == "repository_structure":
+    if normalized_name in {
+        "repository_structure",
+        "print_tree"
+    }:
+        max_depth = arguments.get(
+            "max_depth",
+            arguments.get("depth", 4)
+        )
+
         return tools.repository_structure(
-            max_depth=arguments.get("max_depth", 4)
+            max_depth=max_depth
         )
 
     if normalized_name == "semantic_search":
         return tools.semantic_search(
             query=arguments["query"],
-            max_results=arguments.get("max_results", 5)
+            max_results=arguments.get(
+                "max_results",
+                5
+            )
         )
 
-    if normalized_name in {"code_search", "search_code", "search"}:
+    if normalized_name in {
+        "code_search",
+        "search_code",
+        "search"
+    }:
         return tools.code_search(
             query=arguments["query"],
-            max_results=arguments.get("max_results", 50)
+            max_results=arguments.get(
+                "max_results",
+                50
+            )
         )
 
-    if normalized_name in {"open_file", "file_lookup"}:
+    if normalized_name in {
+        "open_file",
+        "file_lookup"
+    }:
         file_path = arguments.get(
             "path",
             arguments.get("file_path")
         )
 
         if not file_path:
-            raise ValueError("File path was not provided")
+            raise ValueError(
+                "File path was not provided"
+            )
 
         return tools.file_lookup(
             file_path=file_path,
-            line_start=arguments.get("line_start"),
-            line_end=arguments.get("line_end")
+            line_start=arguments.get(
+                "line_start"
+            ),
+            line_end=arguments.get(
+                "line_end"
+            )
         )
 
     if normalized_name == "definition_lookup":
-        definition_type = arguments.get("definition_type")
+        definition_type = arguments.get(
+            "definition_type"
+        )
 
         if definition_type == "":
             definition_type = None
@@ -213,13 +264,21 @@ def execute_tool(repository_path: str, tool_name: str, arguments: dict):
     if normalized_name == "reference_lookup":
         return tools.reference_lookup(
             name=arguments["name"],
-            max_results=arguments.get("max_results", 50)
+            max_results=arguments.get(
+                "max_results",
+                50
+            )
         )
 
-    raise ValueError(f"Unknown tool: {tool_name}")
+    raise ValueError(
+        f"Unknown tool: {tool_name}"
+    )
 
 
-def execute_tool_call(repository_path: str, tool_call):
+def execute_tool_call(
+    repository_path: str,
+    tool_call
+):
     arguments = json.loads(
         tool_call.function.arguments
     )

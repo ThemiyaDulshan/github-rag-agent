@@ -1,12 +1,19 @@
+from functools import lru_cache
+
 from sentence_transformers import SentenceTransformer
 
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
 
+@lru_cache(maxsize=1)
+def get_embedding_model(model_name: str = MODEL_NAME):
+    return SentenceTransformer(model_name)
+
+
 class EmbeddingModel:
     def __init__(self, model_name: str = MODEL_NAME):
-        self.model = SentenceTransformer(model_name)
+        self.model = get_embedding_model(model_name)
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         embeddings = self.model.encode(
