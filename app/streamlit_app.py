@@ -1,13 +1,16 @@
 from pathlib import Path
-import os
-import shutil
-import stat
-
 import streamlit as st
 
-from app.basic_graph import build_graph
-from app.github_loader import load_repository
+from app.github_loader import (
+    load_repository,
+    parse_github_url
+)
 from app.vector_store import is_indexed_repository
+
+
+BASE_REPOSITORY_PATH = Path(
+    "data/repositories"
+)
 
 
 st.set_page_config(
@@ -18,309 +21,337 @@ st.set_page_config(
 )
 
 
-def remove_readonly(func, path, exc_info):
-    os.chmod(path, stat.S_IWRITE)
-    func(path)
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background: #0d1117;
+        color: #e6edf3;
+    }
+
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    [data-testid="stToolbar"] {
+        visibility: hidden;
+    }
+
+    .block-container {
+        max-width: 1180px;
+        padding-top: 2.5rem;
+        padding-bottom: 3rem;
+    }
+
+    .hero {
+        padding: 1.5rem 0 1.2rem 0;
+    }
+
+    .hero-title {
+        font-size: 2.6rem;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        color: #f0f6fc;
+        margin-bottom: 0.35rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.05rem;
+        color: #8b949e;
+        margin-bottom: 0;
+    }
+
+    .section-title {
+        font-size: 1.15rem;
+        font-weight: 650;
+        color: #f0f6fc;
+        margin-top: 1.4rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .repo-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 14px;
+        padding: 1.35rem 1.5rem;
+        margin-top: 1.2rem;
+        margin-bottom: 1.2rem;
+    }
+
+    .repo-name {
+        font-size: 1.25rem;
+        font-weight: 650;
+        color: #f0f6fc;
+        margin-bottom: 0.35rem;
+    }
+
+    .repo-path {
+        color: #8b949e;
+        font-size: 0.9rem;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 0.28rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin-top: 0.75rem;
+    }
+
+    .status-ready {
+        color: #3fb950;
+        background: rgba(46, 160, 67, 0.15);
+        border: 1px solid rgba(46, 160, 67, 0.35);
+    }
+
+    .status-indexed {
+        color: #58a6ff;
+        background: rgba(56, 139, 253, 0.12);
+        border: 1px solid rgba(56, 139, 253, 0.3);
+    }
+
+    .question-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 14px;
+        padding: 1.4rem 1.5rem 1.5rem 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .answer-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 14px;
+        padding: 1.5rem;
+        margin-top: 1.2rem;
+    }
+
+    .answer-header {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-size: 1.05rem;
+        font-weight: 650;
+        color: #f0f6fc;
+        margin-bottom: 1rem;
+    }
+
+    .footer {
+        text-align: center;
+        color: #6e7681;
+        font-size: 0.82rem;
+        padding-top: 2rem;
+    }
+
+    div[data-testid="stMetric"] {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+    }
+
+    div[data-testid="stMetricLabel"] {
+        color: #8b949e;
+    }
+
+    div[data-testid="stMetricValue"] {
+        color: #f0f6fc;
+    }
+
+    .stTextInput > div > div > input {
+        background: #0d1117;
+        color: #e6edf3;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+    }
+
+    .stTextInput > div > div > input:focus {
+        border-color: #58a6ff;
+        box-shadow: 0 0 0 1px #58a6ff;
+    }
+
+    .stTextArea > div > div > textarea {
+        background: #0d1117;
+        color: #e6edf3;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        font-size: 0.95rem;
+    }
+
+    .stTextArea > div > div > textarea:focus {
+        border-color: #58a6ff;
+        box-shadow: 0 0 0 1px #58a6ff;
+    }
+
+    .stButton > button {
+        border-radius: 9px;
+        font-weight: 600;
+        min-height: 2.65rem;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-color: #30363d;
+    }
+
+    hr {
+        border-color: #21262d;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 
-def remove_repository(destination):
-    if destination.exists():
-        shutil.rmtree(
-            destination,
-            onerror=remove_readonly
-        )
+def get_repository_path(
+    owner: str,
+    repository: str
+) -> Path:
+    return (
+        BASE_REPOSITORY_PATH
+        / f"{owner}__{repository}"
+    )
 
 
-def initialize_state():
-    if "repository_path" not in st.session_state:
-        st.session_state.repository_path = None
+def load_repository_for_app(
+    url: str
+):
+    metadata = parse_github_url(url)
 
-    if "repository_name" not in st.session_state:
-        st.session_state.repository_name = None
+    owner = metadata["owner"]
+    repository = metadata["repository"]
 
-    if "repository_url" not in st.session_state:
-        st.session_state.repository_url = None
-
-    if "repository_info" not in st.session_state:
-        st.session_state.repository_info = None
-
-    if "graph" not in st.session_state:
-        st.session_state.graph = None
-
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-
-def load_repository_for_app(url):
-    destination = Path("data/repositories/current")
-
-    if (
-        st.session_state.repository_url == url
-        and st.session_state.repository_info is not None
-        and st.session_state.repository_path is not None
-        and destination.exists()
-    ):
-        return False
-
-    from urllib.parse import urlparse
-
-    parsed = urlparse(url)
-    parts = parsed.path.strip("/").split("/")
-
-    if len(parts) < 2:
-        raise ValueError(
-            "URL must contain an owner and repository name"
-        )
-
-    owner = parts[0]
-    repository = parts[1]
-
-    if repository.endswith(".git"):
-        repository = repository[:-4]
+    repository_path = get_repository_path(
+        owner,
+        repository
+    )
 
     cached = is_indexed_repository(
         owner,
         repository
     )
 
-    if cached:
-        if not destination.exists():
-            raise RuntimeError(
-                "A cached index exists, but the repository files "
-                "are not available. Please remove the cached index "
-                "and reload the repository."
-            )
+    if (
+        st.session_state.get("repository_url")
+        == url
+        and st.session_state.get("repository_path")
+        and Path(
+            st.session_state.repository_path
+        ).exists()
+    ):
+        return None
 
-        repository_info = load_repository(
-            url,
-            str(destination)
+    if cached:
+        st.info(
+            "Existing index found. Reusing cached embeddings."
+        )
+    else:
+        st.info(
+            "First-time setup. Cloning and indexing repository..."
         )
 
-        st.session_state.repository_path = str(destination)
-        st.session_state.repository_name = repository_info["repository"]
-        st.session_state.repository_url = url
-        st.session_state.repository_info = repository_info
-        st.session_state.graph = build_graph(str(destination))
-        st.session_state.messages = []
-
-        return True
-
-    remove_repository(destination)
-
-    repository_info = load_repository(
+    result = load_repository(
         url,
-        str(destination)
+        str(repository_path)
     )
 
-    st.session_state.repository_path = str(destination)
-    st.session_state.repository_name = repository_info["repository"]
     st.session_state.repository_url = url
-    st.session_state.repository_info = repository_info
-    st.session_state.graph = build_graph(str(destination))
-    st.session_state.messages = []
+    st.session_state.repository_path = result[
+        "repository_path"
+    ]
+    st.session_state.repository = result
 
-    return True
-
-
-def inject_styles():
-    st.markdown(
-        """
-        <style>
-        .block-container {
-            max-width: 1100px;
-            padding-top: 2.5rem;
-            padding-bottom: 4rem;
-        }
-
-        .hero {
-            padding: 0.5rem 0 1.5rem 0;
-        }
-
-        .hero-title {
-            font-size: 2.4rem;
-            font-weight: 700;
-            letter-spacing: -0.04em;
-            margin-bottom: 0.35rem;
-        }
-
-        .hero-subtitle {
-            font-size: 1.05rem;
-            color: #6b7280;
-            max-width: 720px;
-            line-height: 1.6;
-        }
-
-        .section-label {
-            font-size: 0.78rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: #6b7280;
-            margin-bottom: 0.5rem;
-        }
-
-        .status-card {
-            border: 1px solid rgba(128, 128, 128, 0.25);
-            border-radius: 14px;
-            padding: 1.15rem 1.25rem;
-            margin-top: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .status-title {
-            font-size: 1.05rem;
-            font-weight: 650;
-            margin-bottom: 0.25rem;
-        }
-
-        .status-subtitle {
-            color: #6b7280;
-            font-size: 0.9rem;
-        }
-
-        .ready-badge {
-            display: inline-block;
-            margin-top: 0.75rem;
-            padding: 0.3rem 0.65rem;
-            border-radius: 999px;
-            font-size: 0.78rem;
-            font-weight: 650;
-            background: rgba(34, 197, 94, 0.12);
-            color: #16a34a;
-        }
-
-        .answer-card {
-            border: 1px solid rgba(128, 128, 128, 0.22);
-            border-radius: 14px;
-            padding: 1.25rem 1.35rem;
-            margin: 0.8rem 0 1rem 0;
-        }
-
-        .question-label {
-            font-size: 0.76rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            color: #6b7280;
-            margin-bottom: 0.35rem;
-        }
-
-        .question-text {
-            font-size: 1rem;
-            font-weight: 600;
-            line-height: 1.5;
-        }
-
-        div[data-testid="stMetric"] {
-            padding: 0.4rem 0;
-        }
-
-        div[data-testid="stTextInput"] input {
-            border-radius: 10px;
-        }
-
-        div[data-testid="stTextArea"] textarea {
-            border-radius: 10px;
-        }
-
-        .stButton > button {
-            border-radius: 9px;
-            font-weight: 600;
-            min-height: 2.5rem;
-        }
-
-        .footer {
-            text-align: center;
-            color: #9ca3af;
-            font-size: 0.8rem;
-            margin-top: 3rem;
-            padding-top: 1rem;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    return result
 
 
-def render_header():
-    st.markdown(
-        """
-        <div class="hero">
-            <div class="hero-title">🔎 RepoLens</div>
-            <div class="hero-subtitle">
-                Understand GitHub repositories using semantic search,
-                code analysis, and retrieval-augmented generation.
-            </div>
+if "repository_url" not in st.session_state:
+    st.session_state.repository_url = ""
+
+if "repository_path" not in st.session_state:
+    st.session_state.repository_path = ""
+
+if "repository" not in st.session_state:
+    st.session_state.repository = None
+
+
+st.markdown(
+    """
+    <div class="hero">
+        <div class="hero-title">🔎 RepoLens</div>
+        <div class="hero-subtitle">
+            Understand any GitHub repository with AI-powered code search and analysis.
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 
-def render_repository_section():
-    st.markdown(
-        '<div class="section-label">Repository</div>',
-        unsafe_allow_html=True
-    )
+st.markdown(
+    '<div class="section-title">Repository</div>',
+    unsafe_allow_html=True
+)
 
-    repository_url = st.text_input(
-        "GitHub Repository URL",
-        placeholder="https://github.com/pallets/flask",
-        value=st.session_state.repository_url or "",
-        label_visibility="collapsed"
-    )
 
-    if st.button(
-        "Load Repository",
-        type="primary",
-        use_container_width=True
-    ):
-        if not repository_url.strip():
-            st.error("Please enter a GitHub repository URL.")
-        else:
-            try:
-                url = repository_url.strip()
+repository_url = st.text_input(
+    "GitHub repository URL",
+    value=st.session_state.repository_url,
+    placeholder="https://github.com/pallets/flask",
+    label_visibility="collapsed"
+)
 
-                with st.spinner(
-                    "Loading repository..."
-                ):
-                    loaded = load_repository_for_app(url)
 
-                if loaded:
-                    st.success(
-                        f"'{st.session_state.repository_name}' "
-                        "is ready."
-                    )
-                else:
-                    st.info(
-                        f"'{st.session_state.repository_name}' "
-                        "is already loaded."
-                    )
-
-            except Exception as error:
-                st.error(
-                    f"Failed to load repository: {error}"
+if st.button(
+    "Load Repository",
+    type="primary",
+    use_container_width=True
+):
+    if not repository_url.strip():
+        st.error(
+            "Please enter a GitHub repository URL."
+        )
+    else:
+        try:
+            with st.spinner(
+                "Loading repository..."
+            ):
+                result = load_repository_for_app(
+                    repository_url.strip()
                 )
 
+            if result is None:
+                st.success(
+                    "Repository is already loaded."
+                )
+            elif result.get("cached"):
+                st.success(
+                    "Repository loaded from cache."
+                )
+            else:
+                st.success(
+                    "Repository indexed successfully."
+                )
 
-def render_repository_status():
-    repository = st.session_state.repository_info
+        except Exception as error:
+            st.error(
+                f"Failed to load repository: {error}"
+            )
 
-    if not repository:
-        return
 
-    index = repository["index"]
+repository = st.session_state.repository
 
+
+if repository:
     st.markdown(
         f"""
-        <div class="status-card">
-            <div class="status-title">
-                {st.session_state.repository_name}
+        <div class="repo-card">
+            <div class="repo-name">
+                📦 {repository["owner"]}/{repository["repository"]}
             </div>
-            <div class="status-subtitle">
-                Repository indexed successfully
+            <div class="repo-path">
+                Read-only repository analysis
             </div>
-            <div class="ready-badge">
+            <div class="status-badge status-ready">
                 ● Ready
             </div>
         </div>
@@ -328,136 +359,119 @@ def render_repository_status():
         unsafe_allow_html=True
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric(
-            "Documents",
-            index["documents"]
+            "Files",
+            repository["total_files"]
         )
 
     with col2:
         st.metric(
-            "Code chunks",
-            index["chunks"]
+            "Relevant Files",
+            repository["relevant_files"]
         )
 
     with col3:
         st.metric(
-            "Embedding size",
-            index["dimensions"]
+            "Code Chunks",
+            repository["index"]["chunks"]
         )
 
+    with col4:
+        st.metric(
+            "Embeddings",
+            repository["index"]["embeddings"]
+        )
 
-def ask_question(question):
-    with st.spinner("Analyzing repository..."):
-        result = st.session_state.graph.invoke({
-            "question": question.strip(),
-            "repository_path": (
-                st.session_state.repository_path
-            ),
-            "messages": [],
-            "answer": "",
-            "tool_calls": []
-        })
-
-    st.session_state.messages.append({
-        "question": question.strip(),
-        "answer": result["answer"]
-    })
-
-
-def render_question_section():
     st.markdown(
-        '<div class="section-label">Ask about the codebase</div>',
+        '<div class="section-title">Ask about the codebase</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="question-card">',
         unsafe_allow_html=True
     )
 
     question = st.text_area(
-        "Question",
+        "Ask a question",
         placeholder=(
-            "How does this repository handle an incoming HTTP request?"
+            "Example: Where is the Flask class implemented, "
+            "and how does it handle incoming HTTP requests?"
         ),
-        height=110,
+        height=120,
         label_visibility="collapsed"
     )
 
-    if st.button(
-        "Ask Question",
+    ask_question = st.button(
+        "Ask RepoLens  →",
         type="primary",
         use_container_width=True
-    ):
+    )
+
+    st.markdown(
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+    if ask_question:
         if not question.strip():
-            st.warning("Please enter a question.")
+            st.warning(
+                "Please enter a question."
+            )
         else:
+            from app.basic_graph import build_graph
+
             try:
-                ask_question(question)
+                with st.spinner(
+                    "Analyzing the codebase..."
+                ):
+                    graph = build_graph(
+                        repository["repository_path"]
+                    )
+
+                    result = graph.invoke({
+                        "question": question.strip(),
+                        "repository_path": repository[
+                            "repository_path"
+                        ],
+                        "messages": [],
+                        "answer": "",
+                        "tool_calls": []
+                    })
+
+                st.markdown(
+                    """
+                    <div class="answer-card">
+                        <div class="answer-header">
+                            💡 Answer
+                        </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                st.markdown(
+                    result["answer"]
+                )
+
+                st.markdown(
+                    "</div>",
+                    unsafe_allow_html=True
+                )
+
             except Exception as error:
                 st.error(
                     f"Failed to answer question: {error}"
                 )
 
 
-def render_answers():
-    if not st.session_state.messages:
-        return
-
-    st.markdown(
-        '<div class="section-label">Conversation</div>',
-        unsafe_allow_html=True
-    )
-
-    for message in reversed(
-        st.session_state.messages
-    ):
-        st.markdown(
-            f"""
-            <div class="answer-card">
-                <div class="question-label">
-                    Question
-                </div>
-                <div class="question-text">
-                    {message["question"]}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            message["answer"]
-        )
-
-
-def render_footer():
-    st.markdown(
-        """
-        <div class="footer">
-            RepoLens · GitHub Repository RAG Assistant
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-def main():
-    initialize_state()
-    inject_styles()
-    render_header()
-
-    render_repository_section()
-
-    if st.session_state.repository_info:
-        st.divider()
-        render_repository_status()
-
-        st.divider()
-        render_question_section()
-
-        render_answers()
-
-    render_footer()
-
-
-if __name__ == "__main__":
-    main()
+st.markdown(
+    """
+    <div class="footer">
+        RepoLens · GitHub Repository Analysis
+    </div>
+    """,
+    unsafe_allow_html=True
+)

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.repository_tools import (
     get_repository_structure,
     get_file
@@ -9,7 +11,10 @@ from app.vector_store import search
 
 
 class RepositoryTools:
-    def __init__(self, repository_path: str):
+    def __init__(
+        self,
+        repository_path: str
+    ):
         self.repository_path = repository_path
 
     def repository_structure(
@@ -72,7 +77,23 @@ class RepositoryTools:
         query: str,
         max_results: int = 5
     ) -> list[dict]:
+        repository_name = Path(
+            self.repository_path
+        ).name
+
+        if "__" not in repository_name:
+            raise ValueError(
+                "Repository path does not contain repository identity"
+            )
+
+        owner, repository = repository_name.split(
+            "__",
+            1
+        )
+
         return search(
-            query,
-            max_results
+            query=query,
+            n_results=max_results,
+            owner=owner,
+            repository=repository
         )

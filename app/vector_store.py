@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -9,20 +10,53 @@ from app.embeddings import EmbeddingModel
 
 
 CHROMA_PATH = "chroma_db"
-COLLECTION_NAME = "github_code"
-METADATA_FILE = Path(CHROMA_PATH) / "repository.json"
+COLLECTION_PREFIX = "github_code_"
+METADATA_PATH = Path(CHROMA_PATH) / "repositories"
+
+
+def get_repository_key(owner: str, repository: str) -> str:
+    value = f"{owner}/{repository}".lower()
+    return hashlib.sha1(value.encode("utf-8")).hexdigest()[:16]
+
+
+def get_collection_name(
+    owner: str,
+    repository: str
+) -> str:
+    return (
+        COLLECTION_PREFIX
+        + get_repository_key(
+            owner,
+            repository
+        )
+    )
+
+
+def get_metadata_path(
+    owner: str,
+    repository: str
+) -> Path:
+    return (
+        METADATA_PATH
+        / f"{get_repository_key(owner, repository)}.json"
+    )
 
 
 class VectorStore:
     def __init__(
         self,
         path: str = CHROMA_PATH,
-        collection_name: str = COLLECTION_NAME
+        collection_name: str | None = None
     ):
         self.client = chromadb.PersistentClient(
             path=path
         )
-        self.collection_name = collection_name
+
+        self.collection_name = (
+            collection_name
+            or f"{COLLECTION_PREFIX}default"
+        )
+
         self.collection = self._get_collection()
 
     def _get_collection(self):
@@ -133,12 +167,20 @@ class VectorStore:
         return self.collection.count()
 
 
-def get_indexed_repository() -> dict | None:
-    if not METADATA_FILE.exists():
+def get_indexed_repository(
+    owner: str,
+    repository: str
+) -> dict | None:
+    metadata_path = get_metadata_path(
+        owner,
+        repository
+    )
+
+    if not metadata_path.exists():
         return None
 
     try:
-        with METADATA_FILE.open(
+        with metadata_path.open(
             "r",
             encoding="utf-8"
         ) as file:
@@ -147,13 +189,50 @@ def get_indexed_repository() -> dict | None:
         return None
 
 
-def save_indexed_repository(metadata: dict):
-    Path(CHROMA_PATH).mkdir(
+def is_indexed_repository(
+    owner: str,
+    repository: str
+) -> bool:
+    metadata = get_indexed_repository(
+        owner,
+        repository
+    )
+
+    if not metadata:
+        return False
+
+    collection = VectorStore(
+        collection_name=get_collection_name(
+            owner,
+            repository
+        )
+    )
+
+    return collection.count() > 0
+
+
+def save_indexed_repository(
+    owner: str,
+    repository: str,
+    index: dict
+):
+    METADATA_PATH.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    with METADATA_FILE.open(
+    metadata_path = get_metadata_path(
+        owner,
+        repository
+    )
+
+    metadata = {
+        "owner": owner,
+        "repository": repository,
+        "index": index
+    }
+
+    with metadata_path.open(
         "w",
         encoding="utf-8"
     ) as file:
@@ -162,21 +241,6 @@ def save_indexed_repository(metadata: dict):
             file,
             indent=2
         )
-
-
-def is_indexed_repository(
-    owner: str,
-    repository: str
-) -> bool:
-    metadata = get_indexed_repository()
-
-    if not metadata:
-        return False
-
-    return (
-        metadata.get("owner") == owner
-        and metadata.get("repository") == repository
-    )
 
 
 def build_index(
@@ -210,7 +274,28 @@ def build_index(
         texts
     )
 
-    vector_store = VectorStore()
+    if not owner or not repository:
+        repository_name = Path(
+            repository_path
+        ).name
+
+        if "__" in repository_name:
+            owner, repository = repository_name.split(
+                "__",
+                1
+            )
+        else:
+            owner = "default"
+            repository = repository_name
+
+    collection_name = get_collection_name(
+        owner,
+        repository
+    )
+
+    vector_store = VectorStore(
+        collection_name=collection_name
+    )
 
     vector_store.reset()
 
@@ -219,34 +304,45 @@ def build_index(
         embeddings
     )
 
-    index_result = {
+    index = {
         "documents": len(documents),
         "chunks": len(chunks),
         "embeddings": len(embeddings),
         "dimensions": len(embeddings[0]),
     }
 
-    if owner and repository:
-        save_indexed_repository({
-            "owner": owner,
-            "repository": repository,
-            "index": index_result
-        })
+    save_indexed_repository(
+        owner,
+        repository,
+        index
+    )
 
-    return index_result
+    return index
 
 
 def search(
     query: str,
-    n_results: int = 5
+    n_results: int = 5,
+    owner: str | None = None,
+    repository: str | None = None
 ) -> list[dict]:
+    if not owner or not repository:
+        raise ValueError(
+            "Owner and repository are required for semantic search"
+        )
+
     embedding_model = EmbeddingModel()
 
     query_embedding = embedding_model.encode_one(
         query
     )
 
-    vector_store = VectorStore()
+    vector_store = VectorStore(
+        collection_name=get_collection_name(
+            owner,
+            repository
+        )
+    )
 
     return vector_store.search(
         query_embedding,

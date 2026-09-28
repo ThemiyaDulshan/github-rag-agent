@@ -88,7 +88,9 @@ def parse_github_url(url: str) -> dict:
         raise ValueError("Invalid URL scheme")
 
     if parsed.netloc != "github.com":
-        raise ValueError("URL must be a GitHub repository URL")
+        raise ValueError(
+            "URL must be a GitHub repository URL"
+        )
 
     parts = parsed.path.strip("/").split("/")
 
@@ -123,8 +125,7 @@ def clone_repository(
         and any(destination_path.iterdir())
     ):
         raise FileExistsError(
-            "Destination already exists and is not empty: "
-            f"{destination}"
+            f"Destination already exists and is not empty: {destination}"
         )
 
     destination_path.parent.mkdir(
@@ -141,9 +142,7 @@ def clone_repository(
     return destination_path
 
 
-def get_file_category(
-    path: Path
-) -> str | None:
+def get_file_category(path: Path) -> str | None:
     extension = path.suffix.lower()
 
     for category, extensions in FILE_CATEGORIES.items():
@@ -265,28 +264,83 @@ def load_repository(
 ) -> dict:
     metadata = parse_github_url(url)
 
-    existing_index = get_indexed_repository()
+    owner = metadata["owner"]
+    repository = metadata["repository"]
 
-    if is_indexed_repository(
-        metadata["owner"],
-        metadata["repository"]
+    destination_path = Path(destination)
+
+    cached = is_indexed_repository(
+        owner,
+        repository
+    )
+
+    if destination_path.exists() and any(
+        destination_path.iterdir()
     ):
-        index_result = existing_index["index"]
+        try:
+            repo = Repo(destination_path)
+            remotes = repo.remotes
+
+            if not remotes:
+                raise ValueError(
+                    "Destination is not a Git repository"
+                )
+
+            remote_url = remotes.origin.url
+
+            if owner.lower() not in remote_url.lower():
+                raise ValueError(
+                    "Destination contains a different repository"
+                )
+
+            if repository.lower() not in remote_url.lower():
+                raise ValueError(
+                    "Destination contains a different repository"
+                )
+
+        except Exception as error:
+            if isinstance(error, ValueError):
+                raise
+
+            raise ValueError(
+                "Destination contains an invalid repository"
+            )
+
+        scan_result = scan_repository(
+            destination_path
+        )
+
+        if cached:
+            indexed = get_indexed_repository(
+                owner,
+                repository
+            )
+
+            return {
+                **metadata,
+                **scan_result,
+                "index": indexed["index"],
+                "cached": True,
+                "repository_path": str(
+                    destination_path
+                ),
+            }
+
+        index_result = build_index(
+            str(destination_path),
+            scan_result["files"],
+            owner,
+            repository
+        )
 
         return {
             **metadata,
-            "repository_name": metadata["repository"],
-            "total_files": 0,
-            "relevant_files": 0,
-            "total_size_bytes": 0,
-            "binary_files": 0,
-            "skipped_large_files": 0,
-            "files": [],
-            "extensions": {},
-            "categories": {},
-            "directories": [],
+            **scan_result,
             "index": index_result,
-            "cached": True,
+            "cached": False,
+            "repository_path": str(
+                destination_path
+            ),
         }
 
     repository_path = clone_repository(
@@ -298,11 +352,27 @@ def load_repository(
         repository_path
     )
 
+    if cached:
+        indexed = get_indexed_repository(
+            owner,
+            repository
+        )
+
+        return {
+            **metadata,
+            **scan_result,
+            "index": indexed["index"],
+            "cached": True,
+            "repository_path": str(
+                repository_path
+            ),
+        }
+
     index_result = build_index(
         str(repository_path),
         scan_result["files"],
-        owner=metadata["owner"],
-        repository=metadata["repository"]
+        owner,
+        repository
     )
 
     return {
@@ -310,4 +380,7 @@ def load_repository(
         **scan_result,
         "index": index_result,
         "cached": False,
+        "repository_path": str(
+            repository_path
+        ),
     }
